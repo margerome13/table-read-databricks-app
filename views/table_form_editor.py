@@ -130,6 +130,10 @@ def get_table_names(catalog_name, schema_name):
 tab_form, tab_view, tab_code, tab_requirements = st.tabs(["**Form Editor**", "**Table View**", "**Code**", "**Requirements**"])
 
 with tab_form:
+    # Initialize variables to avoid NameError
+    schema_name = ""
+    table_name = ""
+    
     # Connection setup
     col1, col2 = st.columns(2)
     
