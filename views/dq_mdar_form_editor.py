@@ -415,7 +415,7 @@ def get_connection(server_hostname: str, http_path: str):
 
 def read_table(table_name: str, conn, limit: int = 1000) -> pd.DataFrame:
     with conn.cursor() as cursor:
-        query = f"SELECT * FROM {{table_name}} LIMIT {{limit}}"
+        query = f"SELECT * FROM {{{{table_name}}}} LIMIT {{{{limit}}}}"
         cursor.execute(query)
         return cursor.fetchall_arrow().to_pandas()
 
@@ -427,7 +427,8 @@ def insert_record(table_name: str, record_data: dict, conn):
         if val is None or val == "":
             values.append("NULL")
         elif isinstance(val, str):
-            values.append(f"'{{val.replace(\\"'\\", \\"''\\")}}}'")
+            escaped_val = val.replace("'", "''")
+            values.append(f"'{{{{escaped_val}}}}'")
         else:
             values.append(str(val))
     
@@ -435,7 +436,7 @@ def insert_record(table_name: str, record_data: dict, conn):
     values_str = ", ".join(values)
     
     with conn.cursor() as cursor:
-        query = f"INSERT INTO {{table_name}} ({{columns_str}}) VALUES ({{values_str}})"
+        query = f"INSERT INTO {{{{table_name}}}} ({{{{columns_str}}}}) VALUES ({{{{values_str}}}}"
         cursor.execute(query)
 
 # Usage example:
