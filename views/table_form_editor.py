@@ -184,6 +184,12 @@ with tab_form:
         horizontal=True
     )
     
+    # Initialize variables for dropdown method
+    schema_name = None
+    table_name = None
+    http_path_input = None
+    catalog_name = None
+    
     if connection_method == "Direct table input":
         # Direct input method
         st.subheader("🔗 Direct Connection")
@@ -236,10 +242,6 @@ with tab_form:
     else:
         # Dropdown selection method
         st.subheader("📋 Select from Available Resources")
-        
-        # Initialize variables
-        schema_name = None
-        table_name = None
         
         # Connection setup
         col1, col2 = st.columns(2)
