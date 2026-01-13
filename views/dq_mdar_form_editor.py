@@ -61,7 +61,8 @@ def insert_record(table_name: str, record_data: Dict[str, Any], conn):
         if val is None or val == "":
             values.append("NULL")
         elif isinstance(val, str):
-            values.append(f"'{val.replace(\"'\", \"''\")}'")  # Escape single quotes
+            escaped_val = val.replace("'", "''")  # Escape single quotes
+            values.append(f"'{escaped_val}'")
         else:
             values.append(str(val))
     
@@ -80,7 +81,8 @@ def update_record(table_name: str, record_data: Dict[str, Any], where_clause: st
         if val is None or val == "":
             set_clauses.append(f"{col} = NULL")
         elif isinstance(val, str):
-            set_clauses.append(f"{col} = '{val.replace(\"'\", \"''\")}'")  # Escape single quotes
+            escaped_val = val.replace("'", "''")  # Escape single quotes
+            set_clauses.append(f"{col} = '{escaped_val}'")
         else:
             set_clauses.append(f"{col} = {val}")
     
@@ -260,7 +262,8 @@ with tab_form:
                                 first_col = list(st.session_state.table_schema.keys())[0]
                                 first_val = selected_record[first_col]
                                 if isinstance(first_val, str):
-                                    where_clause = f"{first_col} = '{first_val.replace(\"'\", \"''\"))}'"
+                                    escaped_val = first_val.replace("'", "''")
+                                    where_clause = f"{first_col} = '{escaped_val}'"
                                 else:
                                     where_clause = f"{first_col} = {first_val}"
                                 
@@ -338,7 +341,8 @@ with tab_form:
                             first_col = list(st.session_state.table_schema.keys())[0]
                             first_val = selected_record[first_col]
                             if isinstance(first_val, str):
-                                where_clause = f"{first_col} = '{first_val.replace(\"'\", \"''\"))}'"
+                                escaped_val = first_val.replace("'", "''")
+                                where_clause = f"{first_col} = '{escaped_val}'"
                             else:
                                 where_clause = f"{first_col} = {first_val}"
                             
