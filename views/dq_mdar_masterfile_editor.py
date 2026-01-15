@@ -5,6 +5,7 @@ from databricks.sdk import WorkspaceClient
 from databricks.sdk.core import Config
 from typing import Dict, Any, List, Optional
 import json
+import re
 
 # Dropdown configuration - update these values as needed
 DROPDOWN_VALUES = {
@@ -234,6 +235,13 @@ def get_table_schema(table_name: str, conn) -> Dict[str, str]:
         schema_info = cursor.fetchall()
         return {row[0]: row[1] for row in schema_info}
 
+def validate_ticket_format(ticket: str) -> bool:
+    """Validate ticket follows MDAR-#### format"""
+    if not ticket or not isinstance(ticket, str):
+        return False
+    ticket = ticket.strip()
+    return bool(re.match(r'^MDAR-\d+$', ticket))
+
 def read_table(table_name: str, conn, limit: int = 1000) -> pd.DataFrame:
     """Read table data with optional limit"""
     with conn.cursor() as cursor:
@@ -243,6 +251,12 @@ def read_table(table_name: str, conn, limit: int = 1000) -> pd.DataFrame:
 
 def insert_record(table_name: str, record_data: Dict[str, Any], conn):
     """Insert a new record"""
+    # Validate and clean ticket field
+    if 'ticket' in record_data:
+        record_data['ticket'] = record_data['ticket'].strip()
+        if not validate_ticket_format(record_data['ticket']):
+            raise ValueError(f"Invalid ticket format: '{record_data['ticket']}'. Must follow pattern MDAR-#### (e.g., MDAR-1234)")
+    
     columns = list(record_data.keys())
     values = []
     
@@ -264,6 +278,12 @@ def insert_record(table_name: str, record_data: Dict[str, Any], conn):
 
 def update_record(table_name: str, record_data: Dict[str, Any], where_clause: str, conn):
     """Update an existing record"""
+    # Validate and clean ticket field
+    if 'ticket' in record_data:
+        record_data['ticket'] = record_data['ticket'].strip()
+        if not validate_ticket_format(record_data['ticket']):
+            raise ValueError(f"Invalid ticket format: '{record_data['ticket']}'. Must follow pattern MDAR-#### (e.g., MDAR-1234)")
+    
     set_clauses = []
     
     for col, val in record_data.items():
@@ -297,6 +317,20 @@ def render_form_field(column_name: str, column_type: str, current_value: Any = N
         current_value = ""
     
     field_key = f"{column_name}_{key_suffix}" if key_suffix else column_name
+    
+    # Special handling for ticket field - enforce MDAR-#### pattern
+    if column_name.lower() == "ticket":
+        ticket_value = st.text_input(
+            f"{column_name} ({column_type})",
+            value=str(current_value).strip() if current_value != "" and current_value is not None else "",
+            max_chars=20,
+            help="Format: MDAR-#### (e.g., MDAR-1234)",
+            key=field_key
+        )
+        # Validate the ticket format
+        if ticket_value and not re.match(r'^MDAR-\d+$', ticket_value.strip()):
+            st.warning("⚠️ Ticket must follow format: MDAR-#### (e.g., MDAR-1234)")
+        return ticket_value.strip()  # Always strip trailing spaces
     
     # Check if this field should be a dropdown
     if column_name in DROPDOWN_VALUES:
