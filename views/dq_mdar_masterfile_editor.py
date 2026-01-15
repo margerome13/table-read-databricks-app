@@ -186,6 +186,15 @@ DROPDOWN_VALUES = {
     ],
 }
 
+# Fields that should use text_area for multi-line input
+MULTILINE_FIELDS = [
+    "updates",
+    "notes",
+    "comments",
+    "description",
+    "details",
+]
+
 st.header(body="DQ MDAR Inventory Masterfile", divider=True)
 st.subheader("Form-based Table Editor")
 st.write(
@@ -354,11 +363,21 @@ def render_form_field(column_name: str, column_type: str, current_value: Any = N
             key=field_key
         )
     else:  # Default to text input for strings and other types
-        return st.text_input(
-            f"{column_name} ({column_type})",
-            value=str(current_value) if current_value != "" and current_value is not None else "",
-            key=field_key
-        )
+        # Check if this field should use text_area for multi-line input
+        if column_name.lower() in [field.lower() for field in MULTILINE_FIELDS]:
+            return st.text_area(
+                f"{column_name} ({column_type})",
+                value=str(current_value) if current_value != "" and current_value is not None else "",
+                height=150,
+                help="Supports multi-line text with line breaks and paragraphs",
+                key=field_key
+            )
+        else:
+            return st.text_input(
+                f"{column_name} ({column_type})",
+                value=str(current_value) if current_value != "" and current_value is not None else "",
+                key=field_key
+            )
 
 # Main interface
 tab_form, tab_view, tab_code, tab_requirements = st.tabs(["**Form Editor**", "**Table View**", "**Code**", "**Requirements**"])
