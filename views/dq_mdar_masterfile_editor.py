@@ -242,6 +242,34 @@ def validate_ticket_format(ticket: str) -> bool:
     ticket = ticket.strip()
     return bool(re.match(r'^MDAR-\d+$', ticket))
 
+def validate_new_record(record_data: Dict[str, Any]) -> tuple[bool, str]:
+    """
+    Validate new record data.
+    Returns: (is_valid, error_message)
+    """
+    # Define optional fields
+    optional_fields = ['root_cause', 'timeline_year', 'timeline_month', 'timeline_quarter']
+    
+    # Check mandatory fields
+    for field, value in record_data.items():
+        if field not in optional_fields:
+            # Check if field is empty
+            if value is None or (isinstance(value, str) and value.strip() == ""):
+                return False, f"Field '{field}' is mandatory and cannot be empty."
+    
+    # Check timeline conditional logic
+    timeline_year = record_data.get('timeline_year', '')
+    timeline_month = record_data.get('timeline_month', '')
+    timeline_quarter = record_data.get('timeline_quarter', '')
+    
+    # If timeline_year is filled, then month or quarter must be filled
+    if timeline_year and isinstance(timeline_year, str) and timeline_year.strip():
+        if (not timeline_month or (isinstance(timeline_month, str) and not timeline_month.strip())) and \
+           (not timeline_quarter or (isinstance(timeline_quarter, str) and not timeline_quarter.strip())):
+            return False, "If 'timeline_year' is provided, either 'timeline_month' or 'timeline_quarter' must be filled."
+    
+    return True, ""
+
 def read_table(table_name: str, conn, limit: int = 1000) -> pd.DataFrame:
     """Read table data with optional limit"""
     with conn.cursor() as cursor:
@@ -534,6 +562,10 @@ with tab_form:
         elif action == "Add New Record":
             st.subheader("➕ Add New Record")
             
+            # Show mandatory field info
+            st.info("ℹ️ **Mandatory fields:** All fields except root_cause, timeline_year, timeline_month, and timeline_quarter.\n\n"
+                   "**Note:** If timeline_year is filled, then either timeline_month or timeline_quarter must be provided.")
+            
             with st.form("add_record_form"):
                 form_data = {}
                 
@@ -553,14 +585,20 @@ with tab_form:
                     clear_form = st.form_submit_button("🗑️ Clear Form")
                 
                 if add_record_btn:
-                    try:
-                        conn = get_connection(DATABRICKS_HOST, HTTP_PATH)
-                        insert_record(TABLE_NAME, form_data, conn)
-                        st.success("✅ Record added successfully!")
-                        st.session_state.table_data = None  # Force refresh
-                        st.rerun()
-                    except Exception as e:
-                        st.error(f"❌ Error adding record: {str(e)}")
+                    # Validate the record
+                    is_valid, error_msg = validate_new_record(form_data)
+                    
+                    if not is_valid:
+                        st.error(f"❌ Validation Error: {error_msg}")
+                    else:
+                        try:
+                            conn = get_connection(DATABRICKS_HOST, HTTP_PATH)
+                            insert_record(TABLE_NAME, form_data, conn)
+                            st.success("✅ Record added successfully!")
+                            st.session_state.table_data = None  # Force refresh
+                            st.rerun()
+                        except Exception as e:
+                            st.error(f"❌ Error adding record: {str(e)}")
         
         elif action == "Delete Record":
             st.subheader("🗑️ Delete Record")
