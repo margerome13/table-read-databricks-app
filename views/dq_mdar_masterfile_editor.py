@@ -561,13 +561,15 @@ with tab_view:
     
     if st.session_state.table_data is not None:
         # Search functionality
-        search_term = st.text_input("🔍 Search records:", placeholder="Enter search term...")
+        search_term = st.text_input("🔍 Search records:", placeholder="Enter search term...", key="search_table_view")
         
-        display_data = st.session_state.table_data
-        if search_term:
-            # Simple search across all string columns
+        display_data = st.session_state.table_data.copy()
+        
+        if search_term and search_term.strip():
+            # Simple search across all columns
+            search_lower = search_term.lower().strip()
             mask = display_data.astype(str).apply(
-                lambda x: x.str.contains(search_term, case=False, na=False)
+                lambda x: x.str.lower().str.contains(search_lower, na=False, regex=False)
             ).any(axis=1)
             display_data = display_data[mask]
             st.info(f"Found {len(display_data)} records matching '{search_term}'")
