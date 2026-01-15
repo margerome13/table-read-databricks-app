@@ -190,6 +190,7 @@ DROPDOWN_VALUES = {
 # Fields that should use text_area for multi-line input
 MULTILINE_FIELDS = [
     "updates",
+    "resolution_updates",
     "notes",
     "comments",
     "description",
