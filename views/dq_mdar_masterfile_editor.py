@@ -5,6 +5,7 @@ from databricks.sdk import WorkspaceClient
 from databricks.sdk.core import Config
 from typing import Dict, Any, List, Optional
 import json
+from views.dq_mdar_masterfile_config import DROPDOWN_VALUES
 
 st.header(body="DQ MDAR Inventory Masterfile", divider=True)
 st.subheader("Form-based Table Editor")
@@ -108,6 +109,25 @@ def render_form_field(column_name: str, column_type: str, current_value: Any = N
         current_value = ""
     
     field_key = f"{column_name}_{key_suffix}" if key_suffix else column_name
+    
+    # Check if this field should be a dropdown
+    if column_name in DROPDOWN_VALUES:
+        options = DROPDOWN_VALUES[column_name]
+        # Find the index of current value, default to 0 if not found
+        try:
+            if current_value and current_value != "":
+                default_index = options.index(str(current_value))
+            else:
+                default_index = 0
+        except (ValueError, AttributeError):
+            default_index = 0
+        
+        return st.selectbox(
+            f"{column_name} ({column_type})",
+            options=options,
+            index=default_index,
+            key=field_key
+        )
     
     # Convert column type to appropriate Streamlit input
     if "int" in column_type.lower() or "bigint" in column_type.lower():
