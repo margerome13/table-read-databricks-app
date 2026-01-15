@@ -253,14 +253,23 @@ def validate_new_record(record_data: Dict[str, Any]) -> tuple[bool, str]:
     # Check mandatory fields
     for field, value in record_data.items():
         if field not in optional_fields:
-            # Check if field is empty
-            if value is None or (isinstance(value, str) and value.strip() == ""):
+            # Check if field is empty or placeholder
+            if value is None or \
+               (isinstance(value, str) and (value.strip() == "" or value == "-- Select --")):
                 return False, f"Field '{field}' is mandatory and cannot be empty."
     
     # Check timeline conditional logic
     timeline_year = record_data.get('timeline_year', '')
     timeline_month = record_data.get('timeline_month', '')
     timeline_quarter = record_data.get('timeline_quarter', '')
+    
+    # Clean up placeholder values
+    if timeline_year == "-- Select --":
+        timeline_year = ""
+    if timeline_month == "-- Select --":
+        timeline_month = ""
+    if timeline_quarter == "-- Select --":
+        timeline_quarter = ""
     
     # If timeline_year is filled, then month or quarter must be filled
     if timeline_year and isinstance(timeline_year, str) and timeline_year.strip():
@@ -279,6 +288,11 @@ def read_table(table_name: str, conn, limit: int = 1000) -> pd.DataFrame:
 
 def insert_record(table_name: str, record_data: Dict[str, Any], conn):
     """Insert a new record"""
+    # Clean up placeholder values
+    for key, value in record_data.items():
+        if value == "-- Select --":
+            record_data[key] = ""
+    
     # Validate and clean ticket field
     if 'ticket' in record_data:
         record_data['ticket'] = record_data['ticket'].strip()
@@ -363,21 +377,41 @@ def render_form_field(column_name: str, column_type: str, current_value: Any = N
     # Check if this field should be a dropdown
     if column_name in DROPDOWN_VALUES:
         options = DROPDOWN_VALUES[column_name]
-        # Find the index of current value, default to 0 if not found
-        try:
-            if current_value and current_value != "":
-                default_index = options.index(str(current_value))
-            else:
-                default_index = 0
-        except (ValueError, AttributeError):
-            default_index = 0
         
-        return st.selectbox(
-            f"{column_name} ({column_type})",
-            options=options,
-            index=default_index,
-            key=field_key
-        )
+        # For new records (key_suffix="add"), add a blank placeholder
+        if key_suffix == "add":
+            options_with_placeholder = ["-- Select --"] + options
+            # Find the index of current value
+            try:
+                if current_value and current_value != "":
+                    default_index = options_with_placeholder.index(str(current_value))
+                else:
+                    default_index = 0  # Default to placeholder
+            except (ValueError, AttributeError):
+                default_index = 0
+            
+            return st.selectbox(
+                f"{column_name} ({column_type})",
+                options=options_with_placeholder,
+                index=default_index,
+                key=field_key
+            )
+        else:
+            # For editing existing records, use original options
+            try:
+                if current_value and current_value != "":
+                    default_index = options.index(str(current_value))
+                else:
+                    default_index = 0
+            except (ValueError, AttributeError):
+                default_index = 0
+            
+            return st.selectbox(
+                f"{column_name} ({column_type})",
+                options=options,
+                index=default_index,
+                key=field_key
+            )
     
     # Convert column type to appropriate Streamlit input
     if "int" in column_type.lower() or "bigint" in column_type.lower():
