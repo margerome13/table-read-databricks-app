@@ -3,5 +3,6 @@ databricks-sdk[openai]==0.73.0
 databricks-sql-connector==4.1.4
 pandas==2.2.3
 psycopg[binary]==3.2.12
+pytz==2024.1
 streamlit==1.51.0
 streamlit-folium==0.25.3

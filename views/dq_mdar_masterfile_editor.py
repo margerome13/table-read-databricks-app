@@ -6,6 +6,8 @@ from databricks.sdk.core import Config
 from typing import Dict, Any, List, Optional
 import json
 import re
+from datetime import datetime
+import pytz
 
 # Dropdown configuration - update these values as needed
 DROPDOWN_VALUES = {
@@ -236,6 +238,12 @@ def get_table_schema(table_name: str, conn) -> Dict[str, str]:
         schema_info = cursor.fetchall()
         return {row[0]: row[1] for row in schema_info}
 
+def get_manila_timestamp() -> str:
+    """Get current timestamp in Manila timezone"""
+    manila_tz = pytz.timezone('Asia/Manila')
+    manila_time = datetime.now(manila_tz)
+    return manila_time.strftime('%Y-%m-%d %H:%M:%S')
+
 def validate_ticket_format(ticket: str) -> bool:
     """Validate ticket follows MDAR-#### format"""
     if not ticket or not isinstance(ticket, str):
@@ -262,8 +270,8 @@ def validate_new_record(record_data: Dict[str, Any]) -> tuple[bool, str]:
     Validate new record data.
     Returns: (is_valid, error_message)
     """
-    # Define optional fields
-    optional_fields = ['root_cause', 'timeline_year', 'timeline_month', 'timeline_quarter']
+    # Define optional fields (including auto-generated timestamp fields)
+    optional_fields = ['root_cause', 'timeline_year', 'timeline_month', 'timeline_quarter', 'created_pht', 'updated_pht']
     
     # Check mandatory fields
     for field, value in record_data.items():
@@ -308,6 +316,11 @@ def insert_record(table_name: str, record_data: Dict[str, Any], conn):
         if value == "-- Select --":
             record_data[key] = ""
     
+    # Add timestamps for Manila timezone
+    manila_timestamp = get_manila_timestamp()
+    record_data['created_pht'] = manila_timestamp
+    record_data['updated_pht'] = manila_timestamp
+    
     # Validate and clean ticket field
     if 'ticket' in record_data:
         record_data['ticket'] = record_data['ticket'].strip()
@@ -335,6 +348,9 @@ def insert_record(table_name: str, record_data: Dict[str, Any], conn):
 
 def update_record(table_name: str, record_data: Dict[str, Any], where_clause: str, conn):
     """Update an existing record"""
+    # Update the updated_pht timestamp to current Manila time
+    record_data['updated_pht'] = get_manila_timestamp()
+    
     # Validate and clean ticket field
     if 'ticket' in record_data:
         record_data['ticket'] = record_data['ticket'].strip()
@@ -344,6 +360,10 @@ def update_record(table_name: str, record_data: Dict[str, Any], where_clause: st
     set_clauses = []
     
     for col, val in record_data.items():
+        # Don't update created_pht - it should remain unchanged
+        if col == 'created_pht':
+            continue
+            
         if val is None or val == "":
             set_clauses.append(f"{col} = NULL")
         elif isinstance(val, str):
@@ -374,6 +394,23 @@ def render_form_field(column_name: str, column_type: str, current_value: Any = N
         current_value = ""
     
     field_key = f"{column_name}_{key_suffix}" if key_suffix else column_name
+    
+    # Special handling for timestamp fields - make them read-only and auto-populated
+    if column_name.lower() in ['created_pht', 'updated_pht']:
+        # For new records, show placeholder
+        if key_suffix == "add":
+            display_value = "(Auto-generated on save)"
+        else:
+            display_value = str(current_value) if current_value else "(Not set)"
+        
+        st.text_input(
+            f"{column_name} ({column_type})",
+            value=display_value,
+            disabled=True,
+            help="Automatically set to Manila time (PHT)",
+            key=field_key
+        )
+        return current_value  # Return original value, not the display value
     
     # Special handling for ticket field - enforce MDAR-#### pattern
     if column_name.lower() == "ticket":
