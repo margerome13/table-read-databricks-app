@@ -490,7 +490,7 @@ def render_form_field(column_name: str, column_type: str, current_value: Any = N
             )
 
 # Main interface
-tab_form, tab_view, tab_code, tab_requirements = st.tabs(["**Form Editor**", "**Table View**", "**Code**", "**Requirements**"])
+tab_form, tab_view = st.tabs(["**Form Editor**", "**Table View**"])
 
 with tab_form:
     # Connection info display
@@ -743,87 +743,3 @@ with tab_view:
             st.metric("Memory Usage", f"{memory_kb:.1f} KB")
     else:
         st.info("Connect to the table in the Form Editor tab to view data here.")
-
-with tab_code:
-    st.code(f"""
-import pandas as pd
-import streamlit as st
-from databricks import sql
-from databricks.sdk.core import Config
-
-# Connection details for DQ MDAR Inventory Masterfile
-DATABRICKS_HOST = "{DATABRICKS_HOST}"
-HTTP_PATH = "{HTTP_PATH}"
-TABLE_NAME = "{TABLE_NAME}"
-
-@st.cache_resource(ttl="1h")
-def get_connection(server_hostname: str, http_path: str):
-    return sql.connect(
-        server_hostname=server_hostname,
-        http_path=http_path,
-        credentials_provider=lambda: Config().authenticate,
-    )
-
-def read_table(table_name: str, conn, limit: int = 1000) -> pd.DataFrame:
-    with conn.cursor() as cursor:
-        query = f"SELECT * FROM {{{{table_name}}}} LIMIT {{{{limit}}}}"
-        cursor.execute(query)
-        return cursor.fetchall_arrow().to_pandas()
-
-def insert_record(table_name: str, record_data: dict, conn):
-    columns = list(record_data.keys())
-    values = []
-    
-    for val in record_data.values():
-        if val is None or val == "":
-            values.append("NULL")
-        elif isinstance(val, str):
-            escaped_val = val.replace("'", "''")
-            values.append(f"'{{{{escaped_val}}}}'")
-        else:
-            values.append(str(val))
-    
-    columns_str = ", ".join(columns)
-    values_str = ", ".join(values)
-    
-    with conn.cursor() as cursor:
-        query = f"INSERT INTO {{{{table_name}}}} ({{{{columns_str}}}}) VALUES ({{{{values_str}}}}"
-        cursor.execute(query)
-
-# Usage example:
-conn = get_connection(DATABRICKS_HOST, HTTP_PATH)
-df = read_table(TABLE_NAME, conn)
-
-# Insert new record
-new_record = {{"column1": "value1", "column2": 123}}
-insert_record(TABLE_NAME, new_record, conn)
-""")
-
-with tab_requirements:
-    col1, col2, col3 = st.columns(3)
-    
-    with col1:
-        st.markdown("""
-        **Permissions Required**
-        * `SELECT` on dg_prod.sandbox.dq_mdar_inventory_masterfile
-        * `MODIFY` on dg_prod.sandbox.dq_mdar_inventory_masterfile
-        * `CAN USE` on the SQL warehouse
-        * Valid Databricks authentication
-        """)
-    
-    with col2:
-        st.markdown(f"""
-        **Databricks Resources**
-        * Host: {DATABRICKS_HOST}
-        * Warehouse: {HTTP_PATH}
-        * Table: {TABLE_NAME}
-        """)
-    
-    with col3:
-        st.markdown("""
-        **Dependencies**
-        * databricks-sdk
-        * databricks-sql-connector
-        * pandas
-        * streamlit
-        """)
