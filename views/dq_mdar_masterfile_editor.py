@@ -242,6 +242,20 @@ def validate_ticket_format(ticket: str) -> bool:
     ticket = ticket.strip()
     return bool(re.match(r'^MDAR-\d+$', ticket))
 
+def check_ticket_exists(ticket: str, table_data: pd.DataFrame) -> bool:
+    """Check if ticket already exists in the table"""
+    if table_data is None or len(table_data) == 0:
+        return False
+    
+    # Check if 'ticket' column exists
+    if 'ticket' not in table_data.columns:
+        return False
+    
+    # Check if the ticket exists (case-insensitive)
+    ticket = ticket.strip().upper()
+    existing_tickets = table_data['ticket'].astype(str).str.strip().str.upper()
+    return ticket in existing_tickets.values
+
 def validate_new_record(record_data: Dict[str, Any]) -> tuple[bool, str]:
     """
     Validate new record data.
@@ -619,20 +633,25 @@ with tab_form:
                     clear_form = st.form_submit_button("🗑️ Clear Form")
                 
                 if add_record_btn:
-                    # Validate the record
-                    is_valid, error_msg = validate_new_record(form_data)
-                    
-                    if not is_valid:
-                        st.error(f"❌ Validation Error: {error_msg}")
+                    # Check if ticket already exists
+                    ticket_value = form_data.get('ticket', '').strip()
+                    if check_ticket_exists(ticket_value, st.session_state.table_data):
+                        st.error("❌ Ticket already exists. Please add a new one or go to View/Edit to update details.")
                     else:
-                        try:
-                            conn = get_connection(DATABRICKS_HOST, HTTP_PATH)
-                            insert_record(TABLE_NAME, form_data, conn)
-                            st.success("✅ Record added successfully!")
-                            st.session_state.table_data = None  # Force refresh
-                            st.rerun()
-                        except Exception as e:
-                            st.error(f"❌ Error adding record: {str(e)}")
+                        # Validate the record
+                        is_valid, error_msg = validate_new_record(form_data)
+                        
+                        if not is_valid:
+                            st.error(f"❌ Validation Error: {error_msg}")
+                        else:
+                            try:
+                                conn = get_connection(DATABRICKS_HOST, HTTP_PATH)
+                                insert_record(TABLE_NAME, form_data, conn)
+                                st.success("✅ Record added successfully!")
+                                st.session_state.table_data = None  # Force refresh
+                                st.rerun()
+                            except Exception as e:
+                                st.error(f"❌ Error adding record: {str(e)}")
         
         elif action == "Delete Record":
             st.subheader("🗑️ Delete Record")
