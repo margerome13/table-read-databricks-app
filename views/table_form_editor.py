@@ -173,141 +173,6 @@ def get_table_names(catalog_name, schema_name):
     tables = w.tables.list(catalog_name=catalog_name, schema_name=schema_name)
     return [table.name for table in tables]
 
-# Main interface
-tab_form, tab_view, tab_code, tab_requirements = st.tabs(["**Form Editor**", "**Table View**", "**Code**", "**Requirements**"])
-
-with tab_form:
-    st.info("💡 **Quick Setup for DQ MDAR Table**: Use the pre-configured DQ MDAR Editor for faster access to your specific table.")
-    
-    # Connection method selection
-    connection_method = st.radio(
-        "Choose connection method:",
-        ["Select from dropdowns", "Direct table input"],
-        horizontal=True
-    )
-    
-    # Initialize variables for dropdown method
-    schema_name = None
-    table_name = None
-    http_path_input = None
-    catalog_name = None
-    
-    if connection_method == "Direct table input":
-        # Direct input method
-        st.subheader("🔗 Direct Connection")
-        
-        col1, col2 = st.columns(2)
-        with col1:
-            warehouse_input = st.text_input(
-                "SQL Warehouse HTTP Path:",
-                value="/sql/1.0/warehouses/80e5636f05f63c9b",
-                help="Example: /sql/1.0/warehouses/your-warehouse-id"
-            )
-        
-        with col2:
-            table_input = st.text_input(
-                "Full Table Name:",
-                value="dg_dev.sandbox.dq_mdar_inventory_data_mart",
-                help="Format: catalog.schema.table"
-            )
-        
-        if warehouse_input and table_input:
-            # Find matching warehouse path
-            http_path = None
-            for wh_name, wh_path in warehouse_paths.items():
-                if wh_path == warehouse_input:
-                    http_path = wh_path
-                    break
-            
-            if not http_path:
-                # Use the input directly if not found in list
-                http_path = warehouse_input
-            
-            try:
-                conn = get_connection(http_path)
-                
-                # Load table data and schema
-                if st.session_state.table_data is None or st.button("🔄 Refresh Data"):
-                    with st.spinner("Loading table data..."):
-                        st.session_state.table_data = read_table(table_input, conn)
-                        st.session_state.table_schema = get_table_schema(table_input, conn)
-                
-                if st.session_state.table_data is not None:
-                    st.success(f"✅ Connected to {table_input} ({len(st.session_state.table_data)} records)")
-                    
-                    # Show the form interface
-                    show_table_form_interface(conn, table_input)
-                    
-            except Exception as e:
-                st.error(f"❌ Connection failed: {str(e)}")
-    
-    else:
-        # Dropdown selection method
-        st.subheader("📋 Select from Available Resources")
-        
-        # Connection setup
-        col1, col2 = st.columns(2)
-        
-        with col1:
-            http_path_input = st.selectbox(
-                "Select SQL Warehouse:", 
-                [""] + list(warehouse_paths.keys())
-            )
-        
-        with col2:
-            catalog_name = st.selectbox(
-                "Select Catalog:", 
-                [""] + [catalog.name for catalog in catalogs]
-            )
-        
-        # Schema selection
-        if catalog_name and catalog_name != "":
-            try:
-                schema_names = get_schema_names(catalog_name)
-                col3, col4 = st.columns(2)
-                
-                with col3:
-                    schema_name = st.selectbox("Select Schema:", [""] + schema_names)
-                
-                # Table selection
-                with col4:
-                    if schema_name and schema_name != "":
-                        try:
-                            table_names = get_table_names(catalog_name, schema_name)
-                            table_name = st.selectbox("Select Table:", [""] + table_names)
-                        except Exception as e:
-                            st.error(f"Error loading tables: {str(e)}")
-                            table_name = None
-            except Exception as e:
-                st.error(f"Error loading schemas: {str(e)}")
-                schema_name = None
-                table_name = None
-        
-        # Load table data when all selections are made
-        if (http_path_input and catalog_name and schema_name and table_name and 
-            http_path_input != "" and catalog_name != "" and schema_name != "" and table_name != ""):
-            
-            full_table_name = f"{catalog_name}.{schema_name}.{table_name}"
-            http_path = warehouse_paths[http_path_input]
-            
-            try:
-                conn = get_connection(http_path)
-                
-                # Load table data and schema
-                if st.session_state.table_data is None or st.button("🔄 Refresh Data"):
-                    with st.spinner("Loading table data..."):
-                        st.session_state.table_data = read_table(full_table_name, conn)
-                        st.session_state.table_schema = get_table_schema(full_table_name, conn)
-                
-                if st.session_state.table_data is not None:
-                    st.success(f"✅ Connected to {full_table_name} ({len(st.session_state.table_data)} records)")
-                    
-                    # Show the form interface
-                    show_table_form_interface(conn, full_table_name)
-                    
-            except Exception as e:
-                st.error(f"❌ Connection failed: {str(e)}")
-
 def show_table_form_interface(conn, table_name):
     """Show the main form interface for table operations"""
     
@@ -463,6 +328,141 @@ def show_table_form_interface(conn, table_name):
                         st.error(f"❌ Error deleting record: {str(e)}")
         else:
             st.info("No records found in the table.")
+
+# Main interface
+tab_form, tab_view, tab_code, tab_requirements = st.tabs(["**Form Editor**", "**Table View**", "**Code**", "**Requirements**"])
+
+with tab_form:
+    st.info("💡 **Quick Setup for DQ MDAR Table**: Use the pre-configured DQ MDAR Editor for faster access to your specific table.")
+    
+    # Connection method selection
+    connection_method = st.radio(
+        "Choose connection method:",
+        ["Select from dropdowns", "Direct table input"],
+        horizontal=True
+    )
+    
+    # Initialize variables for dropdown method
+    schema_name = None
+    table_name = None
+    http_path_input = None
+    catalog_name = None
+    
+    if connection_method == "Direct table input":
+        # Direct input method
+        st.subheader("🔗 Direct Connection")
+        
+        col1, col2 = st.columns(2)
+        with col1:
+            warehouse_input = st.text_input(
+                "SQL Warehouse HTTP Path:",
+                value="/sql/1.0/warehouses/80e5636f05f63c9b",
+                help="Example: /sql/1.0/warehouses/your-warehouse-id"
+            )
+        
+        with col2:
+            table_input = st.text_input(
+                "Full Table Name:",
+                value="dg_dev.sandbox.dq_mdar_inventory_data_mart",
+                help="Format: catalog.schema.table"
+            )
+        
+        if warehouse_input and table_input:
+            # Find matching warehouse path
+            http_path = None
+            for wh_name, wh_path in warehouse_paths.items():
+                if wh_path == warehouse_input:
+                    http_path = wh_path
+                    break
+            
+            if not http_path:
+                # Use the input directly if not found in list
+                http_path = warehouse_input
+            
+            try:
+                conn = get_connection(http_path)
+                
+                # Load table data and schema
+                if st.session_state.table_data is None or st.button("🔄 Refresh Data"):
+                    with st.spinner("Loading table data..."):
+                        st.session_state.table_data = read_table(table_input, conn)
+                        st.session_state.table_schema = get_table_schema(table_input, conn)
+                
+                if st.session_state.table_data is not None:
+                    st.success(f"✅ Connected to {table_input} ({len(st.session_state.table_data)} records)")
+                    
+                    # Show the form interface
+                    show_table_form_interface(conn, table_input)
+                    
+            except Exception as e:
+                st.error(f"❌ Connection failed: {str(e)}")
+    
+    else:
+        # Dropdown selection method
+        st.subheader("📋 Select from Available Resources")
+        
+        # Connection setup
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            http_path_input = st.selectbox(
+                "Select SQL Warehouse:", 
+                [""] + list(warehouse_paths.keys())
+            )
+        
+        with col2:
+            catalog_name = st.selectbox(
+                "Select Catalog:", 
+                [""] + [catalog.name for catalog in catalogs]
+            )
+        
+        # Schema selection
+        if catalog_name and catalog_name != "":
+            try:
+                schema_names = get_schema_names(catalog_name)
+                col3, col4 = st.columns(2)
+                
+                with col3:
+                    schema_name = st.selectbox("Select Schema:", [""] + schema_names)
+                
+                # Table selection
+                with col4:
+                    if schema_name and schema_name != "":
+                        try:
+                            table_names = get_table_names(catalog_name, schema_name)
+                            table_name = st.selectbox("Select Table:", [""] + table_names)
+                        except Exception as e:
+                            st.error(f"Error loading tables: {str(e)}")
+                            table_name = None
+            except Exception as e:
+                st.error(f"Error loading schemas: {str(e)}")
+                schema_name = None
+                table_name = None
+        
+        # Load table data when all selections are made
+        if (http_path_input and catalog_name and schema_name and table_name and 
+            http_path_input != "" and catalog_name != "" and schema_name != "" and table_name != ""):
+            
+            full_table_name = f"{catalog_name}.{schema_name}.{table_name}"
+            http_path = warehouse_paths[http_path_input]
+            
+            try:
+                conn = get_connection(http_path)
+                
+                # Load table data and schema
+                if st.session_state.table_data is None or st.button("🔄 Refresh Data"):
+                    with st.spinner("Loading table data..."):
+                        st.session_state.table_data = read_table(full_table_name, conn)
+                        st.session_state.table_schema = get_table_schema(full_table_name, conn)
+                
+                if st.session_state.table_data is not None:
+                    st.success(f"✅ Connected to {full_table_name} ({len(st.session_state.table_data)} records)")
+                    
+                    # Show the form interface
+                    show_table_form_interface(conn, full_table_name)
+                    
+            except Exception as e:
+                st.error(f"❌ Connection failed: {str(e)}")
 
 with tab_view:
     st.subheader("📊 Table Data View")
