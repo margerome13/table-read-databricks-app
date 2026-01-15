@@ -428,8 +428,8 @@ with tab_form:
             
             # Record selection
             if len(st.session_state.table_data) > 0:
-                # Create more readable record options
-                record_options = []
+                # Create more readable record options with a placeholder
+                record_options = ["-- Select a record to edit --"]
                 for i, row in st.session_state.table_data.iterrows():
                     # Show first few non-null columns for identification
                     display_cols = []
@@ -439,13 +439,16 @@ with tab_form:
                     record_display = f"Row {i}: {' | '.join(display_cols)}"
                     record_options.append(record_display)
                 
-                selected_idx = st.selectbox(
+                selected_option = st.selectbox(
                     "Select record to edit:",
                     range(len(record_options)),
-                    format_func=lambda x: record_options[x]
+                    format_func=lambda x: record_options[x],
+                    index=0
                 )
                 
-                if selected_idx is not None:
+                # Only show form if a valid record is selected (not the placeholder)
+                if selected_option > 0:
+                    selected_idx = selected_option - 1  # Adjust for placeholder
                     selected_record = st.session_state.table_data.iloc[selected_idx]
                     
                     # Show current record in expandable section
@@ -530,8 +533,8 @@ with tab_form:
             st.warning("⚠️ This action cannot be undone!")
             
             if len(st.session_state.table_data) > 0:
-                # Create more readable record options
-                record_options = []
+                # Create more readable record options with a placeholder
+                record_options = ["-- Select a record to delete --"]
                 for i, row in st.session_state.table_data.iterrows():
                     display_cols = []
                     for col, val in row.items():
@@ -540,13 +543,16 @@ with tab_form:
                     record_display = f"Row {i}: {' | '.join(display_cols)}"
                     record_options.append(record_display)
                 
-                selected_idx = st.selectbox(
+                selected_option = st.selectbox(
                     "Select record to delete:",
                     range(len(record_options)),
-                    format_func=lambda x: record_options[x]
+                    format_func=lambda x: record_options[x],
+                    index=0
                 )
                 
-                if selected_idx is not None:
+                # Only show delete confirmation if a valid record is selected (not the placeholder)
+                if selected_option > 0:
+                    selected_idx = selected_option - 1  # Adjust for placeholder
                     selected_record = st.session_state.table_data.iloc[selected_idx]
                     
                     st.write("**Record to Delete:**")
