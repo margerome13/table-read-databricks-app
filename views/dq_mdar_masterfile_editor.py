@@ -748,19 +748,81 @@ with tab_view:
     st.subheader("📊 Table Data View")
     
     if st.session_state.table_data is not None:
+        # Filters section
+        st.write("**Filters:**")
+        filter_col1, filter_col2, filter_col3 = st.columns(3)
+        
+        with filter_col1:
+            # Get unique values for mesh_team filter
+            mesh_team_values = ["All"] + sorted([str(x) for x in st.session_state.table_data['mesh_team'].dropna().unique() if str(x).strip()])
+            selected_mesh_team = st.selectbox(
+                "🏢 Mesh Team",
+                options=mesh_team_values,
+                key="filter_mesh_team"
+            )
+        
+        with filter_col2:
+            # Get unique values for dq_poc filter
+            dq_poc_values = ["All"] + sorted([str(x) for x in st.session_state.table_data['dq_poc'].dropna().unique() if str(x).strip()])
+            selected_dq_poc = st.selectbox(
+                "👤 DQ POC",
+                options=dq_poc_values,
+                key="filter_dq_poc"
+            )
+        
+        with filter_col3:
+            # Get unique values for overall_status filter
+            status_values = ["All"] + sorted([str(x) for x in st.session_state.table_data['overall_status'].dropna().unique() if str(x).strip()])
+            selected_status = st.selectbox(
+                "📊 Overall Status",
+                options=status_values,
+                key="filter_status"
+            )
+        
         # Search functionality
         search_term = st.text_input("🔍 Search records:", placeholder="Enter search term...", key="search_table_view")
         
+        # Apply filters
         display_data = st.session_state.table_data.copy()
         
+        # Apply mesh_team filter
+        if selected_mesh_team != "All":
+            display_data = display_data[display_data['mesh_team'].astype(str) == selected_mesh_team]
+        
+        # Apply dq_poc filter
+        if selected_dq_poc != "All":
+            display_data = display_data[display_data['dq_poc'].astype(str) == selected_dq_poc]
+        
+        # Apply overall_status filter
+        if selected_status != "All":
+            display_data = display_data[display_data['overall_status'].astype(str) == selected_status]
+        
+        # Apply search filter
         if search_term and search_term.strip():
-            # Simple search across all columns
             search_lower = search_term.lower().strip()
             mask = display_data.astype(str).apply(
-                lambda x: x.str.lower().str.contains(search_lower, na=False, regex=False)
+                lambda col: col.str.lower().str.contains(search_lower, case=False, na=False, regex=False)
             ).any(axis=1)
             display_data = display_data[mask]
-            st.info(f"Found {len(display_data)} records matching '{search_term}'")
+        
+        # Show filter results info
+        active_filters = []
+        if selected_mesh_team != "All":
+            active_filters.append(f"Mesh Team: {selected_mesh_team}")
+        if selected_dq_poc != "All":
+            active_filters.append(f"DQ POC: {selected_dq_poc}")
+        if selected_status != "All":
+            active_filters.append(f"Status: {selected_status}")
+        if search_term and search_term.strip():
+            active_filters.append(f"Search: '{search_term}'")
+        
+        if active_filters:
+            st.info(f"🔍 Active filters: {' | '.join(active_filters)} → Found {len(display_data)} record(s)")
+        
+        # Clear filters button
+        if active_filters:
+            if st.button("🔄 Clear All Filters"):
+                st.rerun()
         
         st.dataframe(
             display_data,
