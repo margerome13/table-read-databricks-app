@@ -903,8 +903,12 @@ with tab_view:
                         original_row = display_data.loc[idx]
                         edited_row = edited_data.loc[idx]
                         
-                        # Check if row was modified
-                        if not original_row.equals(edited_row):
+                        # Check if row was modified (excluding timestamp fields)
+                        # Create copies without timestamp fields for comparison
+                        original_row_compare = original_row.drop(labels=['created_pht', 'updated_pht'], errors='ignore')
+                        edited_row_compare = edited_row.drop(labels=['created_pht', 'updated_pht'], errors='ignore')
+                        
+                        if not original_row_compare.equals(edited_row_compare):
                             # Get the ticket for WHERE clause (use original ticket)
                             original_ticket = str(original_row['ticket']).strip()
                             edited_ticket = str(edited_row['ticket']).strip()
@@ -922,6 +926,12 @@ with tab_view:
                             
                             # Create record data from edited row
                             record_data = edited_row.to_dict()
+                            
+                            # Preserve the original created_pht timestamp (should never change)
+                            if 'created_pht' in original_row:
+                                record_data['created_pht'] = original_row['created_pht']
+                            
+                            # The updated_pht will be set by update_record function to current Manila time
                             
                             # Validate mandatory fields
                             optional_fields = ['root_cause', 'timeline_year', 'timeline_month', 'timeline_quarter', 'created_pht', 'updated_pht']
