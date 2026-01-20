@@ -824,7 +824,14 @@ with tab_view:
             if st.button("🔄 Clear All Filters"):
                 st.rerun()
         
-        st.info("💡 **Tip:** Click on any cell to edit. Changes are saved when you click 'Save Changes' button below.")
+        st.info("💡 **Inline Editing Tips:**\n"
+                "- Click any cell to edit directly\n"
+                "- Dropdown fields have predefined values\n"
+                "- Ticket format: MDAR-#### (e.g., MDAR-1234)\n"
+                "- All fields are mandatory except: root_cause, timeline_year, timeline_month, timeline_quarter\n"
+                "- If timeline_year is filled, either timeline_month or timeline_quarter must be provided\n"
+                "- Timestamp fields (created_pht, updated_pht) are read-only and auto-managed\n"
+                "- Click 'Save Changes' button below to commit your edits")
         
         # Configure column types for data editor
         column_config = {}
@@ -842,6 +849,34 @@ with tab_view:
                 disabled=True,
                 help="Auto-updated timestamp (read-only)"
             )
+        
+        # Configure dropdown fields
+        for field_name, options in DROPDOWN_VALUES.items():
+            if field_name in display_data.columns:
+                column_config[field_name] = st.column_config.SelectboxColumn(
+                    field_name,
+                    options=options,
+                    required=field_name not in ['root_cause', 'timeline_year', 'timeline_month', 'timeline_quarter'],
+                    help=f"Select from predefined {field_name} values"
+                )
+        
+        # Configure ticket field with validation hint
+        if 'ticket' in display_data.columns:
+            column_config['ticket'] = st.column_config.TextColumn(
+                "ticket",
+                max_chars=20,
+                required=True,
+                help="Format: MDAR-#### (e.g., MDAR-1234)"
+            )
+        
+        # Configure multi-line text fields
+        for field_name in MULTILINE_FIELDS:
+            if field_name in display_data.columns:
+                column_config[field_name] = st.column_config.TextColumn(
+                    field_name,
+                    help="Multi-line text field",
+                    width="large"
+                )
         
         # Editable data editor
         edited_data = st.data_editor(
@@ -862,36 +897,79 @@ with tab_view:
                     
                     # Find changed rows
                     changes_made = False
+                    validation_errors = []
+                    
                     for idx in edited_data.index:
                         original_row = display_data.loc[idx]
                         edited_row = edited_data.loc[idx]
                         
                         # Check if row was modified
                         if not original_row.equals(edited_row):
-                            # Get the ticket for WHERE clause
-                            ticket = original_row['ticket']
+                            # Get the ticket for WHERE clause (use original ticket)
+                            original_ticket = str(original_row['ticket']).strip()
+                            edited_ticket = str(edited_row['ticket']).strip()
                             
-                            # Validate ticket format
-                            if not validate_ticket_format(str(ticket)):
-                                st.error(f"❌ Invalid ticket format for row with ticket '{ticket}'. Skipping.")
+                            # Validate edited ticket format
+                            if not validate_ticket_format(edited_ticket):
+                                validation_errors.append(f"Row {idx}: Invalid ticket format '{edited_ticket}'. Must follow MDAR-#### pattern.")
                                 continue
+                            
+                            # Check if ticket was changed and if new ticket already exists
+                            if original_ticket != edited_ticket:
+                                if check_ticket_exists(edited_ticket, st.session_state.table_data):
+                                    validation_errors.append(f"Row {idx}: Ticket '{edited_ticket}' already exists in the database.")
+                                    continue
                             
                             # Create record data from edited row
                             record_data = edited_row.to_dict()
                             
-                            # Create WHERE clause
-                            escaped_ticket = str(ticket).replace("'", "''")
-                            where_clause = f"ticket = '{escaped_ticket}'"
-                            
-                            # Update the record
-                            update_record(TABLE_NAME, record_data, where_clause, conn)
-                            changes_made = True
+                            # Validate mandatory fields
+                            optional_fields = ['root_cause', 'timeline_year', 'timeline_month', 'timeline_quarter', 'created_pht', 'updated_pht']
+                            for field, value in record_data.items():
+                                if field not in optional_fields:
+                                    if pd.isna(value) or (isinstance(value, str) and value.strip() == ""):
+                                        validation_errors.append(f"Row {idx}: Field '{field}' is mandatory and cannot be empty.")
+                                        break
+                            else:
+                                # Validate timeline conditional logic
+                                timeline_year = record_data.get('timeline_year', '')
+                                timeline_month = record_data.get('timeline_month', '')
+                                timeline_quarter = record_data.get('timeline_quarter', '')
+                                
+                                # Convert NaN to empty string
+                                if pd.isna(timeline_year):
+                                    timeline_year = ""
+                                if pd.isna(timeline_month):
+                                    timeline_month = ""
+                                if pd.isna(timeline_quarter):
+                                    timeline_quarter = ""
+                                
+                                # If timeline_year is filled, then month or quarter must be filled
+                                if timeline_year and isinstance(timeline_year, str) and str(timeline_year).strip():
+                                    if (not timeline_month or (isinstance(timeline_month, str) and not str(timeline_month).strip())) and \
+                                       (not timeline_quarter or (isinstance(timeline_quarter, str) and not str(timeline_quarter).strip())):
+                                        validation_errors.append(f"Row {idx}: If 'timeline_year' is provided, either 'timeline_month' or 'timeline_quarter' must be filled.")
+                                        continue
+                                
+                                # Create WHERE clause using original ticket
+                                escaped_ticket = original_ticket.replace("'", "''")
+                                where_clause = f"ticket = '{escaped_ticket}'"
+                                
+                                # Update the record
+                                update_record(TABLE_NAME, record_data, where_clause, conn)
+                                changes_made = True
+                    
+                    # Display validation errors if any
+                    if validation_errors:
+                        st.error("❌ **Validation Errors:**")
+                        for error in validation_errors:
+                            st.error(f"  • {error}")
                     
                     if changes_made:
                         st.success("✅ Changes saved successfully!")
                         st.session_state.table_data = None  # Force refresh
                         st.rerun()
-                    else:
+                    elif not validation_errors:
                         st.info("ℹ️ No changes detected.")
                         
                 except Exception as e:
