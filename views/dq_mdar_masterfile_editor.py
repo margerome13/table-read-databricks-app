@@ -836,18 +836,41 @@ with tab_view:
         # Configure column types for data editor
         column_config = {}
         
-        # Make timestamp fields read-only
+        # Convert timestamp columns to readable datetime format if they exist
         if 'created_pht' in display_data.columns:
+            # Try to convert to datetime - handles both Unix timestamps and string formats
+            try:
+                # First try as Unix timestamp (milliseconds)
+                display_data['created_pht'] = pd.to_datetime(display_data['created_pht'], unit='ms', errors='coerce')
+            except:
+                # If that fails, try parsing as string
+                display_data['created_pht'] = pd.to_datetime(display_data['created_pht'], errors='coerce')
+            
+            # Format as string for display
+            display_data['created_pht'] = display_data['created_pht'].dt.strftime('%Y-%m-%d %H:%M:%S')
+            
             column_config['created_pht'] = st.column_config.TextColumn(
                 "created_pht",
                 disabled=True,
-                help="Auto-generated timestamp (read-only)"
+                help="Auto-generated timestamp in Manila time (PHT) - read-only"
             )
+        
         if 'updated_pht' in display_data.columns:
+            # Try to convert to datetime - handles both Unix timestamps and string formats
+            try:
+                # First try as Unix timestamp (milliseconds)
+                display_data['updated_pht'] = pd.to_datetime(display_data['updated_pht'], unit='ms', errors='coerce')
+            except:
+                # If that fails, try parsing as string
+                display_data['updated_pht'] = pd.to_datetime(display_data['updated_pht'], errors='coerce')
+            
+            # Format as string for display
+            display_data['updated_pht'] = display_data['updated_pht'].dt.strftime('%Y-%m-%d %H:%M:%S')
+            
             column_config['updated_pht'] = st.column_config.TextColumn(
                 "updated_pht",
                 disabled=True,
-                help="Auto-updated timestamp (read-only)"
+                help="Auto-updated timestamp in Manila time (PHT) - read-only"
             )
         
         # Configure dropdown fields
