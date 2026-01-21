@@ -360,11 +360,15 @@ def update_record(table_name: str, record_data: Dict[str, Any], where_clause: st
     set_clauses = []
     
     for col, val in record_data.items():
+        # Skip invalid column names (NaN, None, empty strings)
+        if pd.isna(col) or col is None or (isinstance(col, str) and not col.strip()):
+            continue
+            
         # Don't update created_pht - it should remain unchanged
         if col == 'created_pht':
             continue
             
-        if val is None or val == "":
+        if val is None or val == "" or pd.isna(val):
             set_clauses.append(f"{col} = NULL")
         elif isinstance(val, str):
             escaped_val = val.replace("'", "''")  # Escape single quotes
@@ -983,6 +987,9 @@ with tab_view:
                             
                             # Create record data from edited row
                             record_data = edited_row.to_dict()
+                            
+                            # Filter out any NaN or invalid column names
+                            record_data = {k: v for k, v in record_data.items() if not pd.isna(k) and k is not None and (not isinstance(k, str) or k.strip())}
                             
                             # Preserve the original created_pht timestamp (should never change)
                             if 'created_pht' in original_row:
