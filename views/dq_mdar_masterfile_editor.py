@@ -748,11 +748,11 @@ with tab_view:
     st.subheader("📊 Table Data View")
     
     if st.session_state.table_data is not None:
-        # Filters section
+        # Filters section - Row 1
         st.write("**Filters:**")
-        filter_col1, filter_col2, filter_col3 = st.columns(3)
+        filter_row1_col1, filter_row1_col2, filter_row1_col3 = st.columns(3)
         
-        with filter_col1:
+        with filter_row1_col1:
             # Get unique values for mesh_team filter
             mesh_team_values = ["All"] + sorted([str(x) for x in st.session_state.table_data['mesh_team'].dropna().unique() if str(x).strip()])
             selected_mesh_team = st.selectbox(
@@ -761,7 +761,7 @@ with tab_view:
                 key="filter_mesh_team"
             )
         
-        with filter_col2:
+        with filter_row1_col2:
             # Get unique values for dq_poc filter
             dq_poc_values = ["All"] + sorted([str(x) for x in st.session_state.table_data['dq_poc'].dropna().unique() if str(x).strip()])
             selected_dq_poc = st.selectbox(
@@ -770,13 +770,34 @@ with tab_view:
                 key="filter_dq_poc"
             )
         
-        with filter_col3:
+        with filter_row1_col3:
             # Get unique values for overall_status filter
             status_values = ["All"] + sorted([str(x) for x in st.session_state.table_data['overall_status'].dropna().unique() if str(x).strip()])
             selected_status = st.selectbox(
                 "📊 Overall Status",
                 options=status_values,
                 key="filter_status"
+            )
+        
+        # Filters section - Row 2
+        filter_row2_col1, filter_row2_col2, filter_row2_col3 = st.columns(3)
+        
+        with filter_row2_col1:
+            # Get unique values for tech_group filter
+            tech_group_values = ["All"] + sorted([str(x) for x in st.session_state.table_data['tech_group'].dropna().unique() if str(x).strip()])
+            selected_tech_group = st.selectbox(
+                "👥 Tech Group",
+                options=tech_group_values,
+                key="filter_tech_group"
+            )
+        
+        with filter_row2_col2:
+            # Get unique values for timeline_year filter
+            timeline_year_values = ["All"] + sorted([str(x) for x in st.session_state.table_data['timeline_year'].dropna().unique() if str(x).strip()])
+            selected_timeline_year = st.selectbox(
+                "📅 Timeline Year",
+                options=timeline_year_values,
+                key="filter_timeline_year"
             )
         
         # Search functionality
@@ -797,6 +818,14 @@ with tab_view:
         if selected_status != "All":
             display_data = display_data[display_data['overall_status'].astype(str) == selected_status]
         
+        # Apply tech_group filter
+        if selected_tech_group != "All":
+            display_data = display_data[display_data['tech_group'].astype(str) == selected_tech_group]
+        
+        # Apply timeline_year filter
+        if selected_timeline_year != "All":
+            display_data = display_data[display_data['timeline_year'].astype(str) == selected_timeline_year]
+        
         # Apply search filter
         if search_term and search_term.strip():
             search_lower = search_term.lower().strip()
@@ -813,6 +842,10 @@ with tab_view:
             active_filters.append(f"DQ POC: {selected_dq_poc}")
         if selected_status != "All":
             active_filters.append(f"Status: {selected_status}")
+        if selected_tech_group != "All":
+            active_filters.append(f"Tech Group: {selected_tech_group}")
+        if selected_timeline_year != "All":
+            active_filters.append(f"Timeline Year: {selected_timeline_year}")
         if search_term and search_term.strip():
             active_filters.append(f"Search: '{search_term}'")
         
@@ -883,13 +916,14 @@ with tab_view:
                     help=f"Select from predefined {field_name} values"
                 )
         
-        # Configure ticket field with validation hint
+        # Configure ticket field with validation hint and pin it to the left
         if 'ticket' in display_data.columns:
             column_config['ticket'] = st.column_config.TextColumn(
                 "ticket",
                 max_chars=20,
                 required=True,
-                help="Format: MDAR-#### (e.g., MDAR-1234)"
+                help="Format: MDAR-#### (e.g., MDAR-1234)",
+                pinned=True  # Pin ticket column to the left
             )
         
         # Configure multi-line text fields
