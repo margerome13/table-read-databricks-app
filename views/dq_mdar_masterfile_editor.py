@@ -796,8 +796,8 @@ with tab_view:
             )
         
         with filter_row2_col2:
-            # Get unique values for timeline_year filter
-            timeline_year_values = ["All"] + sorted([str(x) for x in st.session_state.table_data['timeline_year'].dropna().unique() if str(x).strip()])
+            # Get unique values for timeline_year filter, including blank/null option
+            timeline_year_values = ["All", "(Blank/Null)"] + sorted([str(x) for x in st.session_state.table_data['timeline_year'].dropna().unique() if str(x).strip()])
             selected_timeline_year = st.selectbox(
                 "📅 Timeline Year",
                 options=timeline_year_values,
@@ -827,7 +827,14 @@ with tab_view:
             display_data = display_data[display_data['tech_group'].astype(str) == selected_tech_group]
         
         # Apply timeline_year filter
-        if selected_timeline_year != "All":
+        if selected_timeline_year == "(Blank/Null)":
+            # Filter for null or blank values
+            display_data = display_data[
+                (display_data['timeline_year'].isna()) | 
+                (display_data['timeline_year'].astype(str).str.strip() == "") |
+                (display_data['timeline_year'].astype(str) == "nan")
+            ]
+        elif selected_timeline_year != "All":
             display_data = display_data[display_data['timeline_year'].astype(str) == selected_timeline_year]
         
         # Apply search filter
