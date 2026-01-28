@@ -213,6 +213,8 @@ TABLE_NAME = "dg_prod.sandbox.dq_mdar_inventory_masterfile"
 # Initialize session state
 if 'selected_record' not in st.session_state:
     st.session_state.selected_record = None
+if 'selected_record_index' not in st.session_state:
+    st.session_state.selected_record_index = 0
 if 'form_data' not in st.session_state:
     st.session_state.form_data = {}
 if 'table_data' not in st.session_state:
@@ -221,6 +223,10 @@ if 'table_schema' not in st.session_state:
     st.session_state.table_schema = None
 if 'connection_established' not in st.session_state:
     st.session_state.connection_established = False
+if 'show_success_message' not in st.session_state:
+    st.session_state.show_success_message = False
+if 'success_message' not in st.session_state:
+    st.session_state.success_message = ""
 # Filter persistence
 if 'filter_mesh_team' not in st.session_state:
     st.session_state.filter_mesh_team = "All"
@@ -593,6 +599,11 @@ with tab_form:
             
             # Record selection
             if len(st.session_state.table_data) > 0:
+                # Show success message if available
+                if st.session_state.show_success_message:
+                    st.success(st.session_state.success_message)
+                    st.session_state.show_success_message = False
+                
                 # Create more readable record options with a placeholder
                 record_options = ["-- Select a record to edit --"]
                 for i, row in st.session_state.table_data.iterrows():
@@ -608,8 +619,11 @@ with tab_form:
                     "Select record to edit:",
                     range(len(record_options)),
                     format_func=lambda x: record_options[x],
-                    index=0
+                    index=st.session_state.selected_record_index
                 )
+                
+                # Update session state with selected index
+                st.session_state.selected_record_index = selected_option
                 
                 # Only show form if a valid record is selected (not the placeholder)
                 if selected_option > 0:
@@ -657,7 +671,10 @@ with tab_form:
                                     update_record(TABLE_NAME, form_data, where_clause, conn)
                                     # Refresh data in background
                                     st.session_state.table_data = read_table(TABLE_NAME, conn)
-                                st.success("✅ Record updated successfully!")
+                                    # Set success message
+                                    st.session_state.show_success_message = True
+                                    st.session_state.success_message = "✅ Record updated successfully!"
+                                st.rerun()
                             except Exception as e:
                                 st.error(f"❌ Error updating record: {str(e)}")
             else:
@@ -790,29 +807,47 @@ with tab_view:
         with filter_row1_col1:
             # Get unique values for mesh_team filter
             mesh_team_values = ["All"] + sorted([str(x) for x in st.session_state.table_data['mesh_team'].dropna().unique() if str(x).strip()])
+            try:
+                default_idx = mesh_team_values.index(st.session_state.filter_mesh_team)
+            except ValueError:
+                default_idx = 0
             selected_mesh_team = st.selectbox(
                 "🏢 Mesh Team",
                 options=mesh_team_values,
-                key="filter_mesh_team"
+                index=default_idx,
+                key="filter_mesh_team_select"
             )
+            st.session_state.filter_mesh_team = selected_mesh_team
         
         with filter_row1_col2:
             # Get unique values for dq_poc filter
             dq_poc_values = ["All"] + sorted([str(x) for x in st.session_state.table_data['dq_poc'].dropna().unique() if str(x).strip()])
+            try:
+                default_idx = dq_poc_values.index(st.session_state.filter_dq_poc)
+            except ValueError:
+                default_idx = 0
             selected_dq_poc = st.selectbox(
                 "👤 DQ POC",
                 options=dq_poc_values,
-                key="filter_dq_poc"
+                index=default_idx,
+                key="filter_dq_poc_select"
             )
+            st.session_state.filter_dq_poc = selected_dq_poc
         
         with filter_row1_col3:
             # Get unique values for overall_status filter
             status_values = ["All"] + sorted([str(x) for x in st.session_state.table_data['overall_status'].dropna().unique() if str(x).strip()])
+            try:
+                default_idx = status_values.index(st.session_state.filter_status)
+            except ValueError:
+                default_idx = 0
             selected_status = st.selectbox(
                 "📊 Overall Status",
                 options=status_values,
-                key="filter_status"
+                index=default_idx,
+                key="filter_status_select"
             )
+            st.session_state.filter_status = selected_status
         
         # Filters section - Row 2
         filter_row2_col1, filter_row2_col2, filter_row2_col3 = st.columns(3)
@@ -820,20 +855,32 @@ with tab_view:
         with filter_row2_col1:
             # Get unique values for tech_group filter
             tech_group_values = ["All"] + sorted([str(x) for x in st.session_state.table_data['tech_group'].dropna().unique() if str(x).strip()])
+            try:
+                default_idx = tech_group_values.index(st.session_state.filter_tech_group)
+            except ValueError:
+                default_idx = 0
             selected_tech_group = st.selectbox(
                 "👥 Tech Group",
                 options=tech_group_values,
-                key="filter_tech_group"
+                index=default_idx,
+                key="filter_tech_group_select"
             )
+            st.session_state.filter_tech_group = selected_tech_group
         
         with filter_row2_col2:
             # Get unique values for timeline_year filter, including blank/null option
             timeline_year_values = ["All", "(Blank/Null)"] + sorted([str(x) for x in st.session_state.table_data['timeline_year'].dropna().unique() if str(x).strip()])
+            try:
+                default_idx = timeline_year_values.index(st.session_state.filter_timeline_year)
+            except ValueError:
+                default_idx = 0
             selected_timeline_year = st.selectbox(
                 "📅 Timeline Year",
                 options=timeline_year_values,
-                key="filter_timeline_year"
+                index=default_idx,
+                key="filter_timeline_year_select"
             )
+            st.session_state.filter_timeline_year = selected_timeline_year
         
         # Search functionality
         search_term = st.text_input("🔍 Search records:", placeholder="Enter search term...", value=st.session_state.search_term, key="search_input")
