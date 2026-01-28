@@ -221,6 +221,19 @@ if 'table_schema' not in st.session_state:
     st.session_state.table_schema = None
 if 'connection_established' not in st.session_state:
     st.session_state.connection_established = False
+# Filter persistence
+if 'filter_mesh_team' not in st.session_state:
+    st.session_state.filter_mesh_team = "All"
+if 'filter_dq_poc' not in st.session_state:
+    st.session_state.filter_dq_poc = "All"
+if 'filter_status' not in st.session_state:
+    st.session_state.filter_status = "All"
+if 'filter_tech_group' not in st.session_state:
+    st.session_state.filter_tech_group = "All"
+if 'filter_timeline_year' not in st.session_state:
+    st.session_state.filter_timeline_year = "All"
+if 'search_term' not in st.session_state:
+    st.session_state.search_term = ""
 
 @st.cache_resource(ttl="1h")
 def get_connection(server_hostname: str, http_path: str):
@@ -630,20 +643,21 @@ with tab_form:
                         
                         if save_changes:
                             try:
-                                conn = get_connection(DATABRICKS_HOST, HTTP_PATH)
-                                # Create WHERE clause using first column as identifier
-                                first_col = list(st.session_state.table_schema.keys())[0]
-                                first_val = selected_record[first_col]
-                                if isinstance(first_val, str):
-                                    escaped_val = first_val.replace("'", "''")
-                                    where_clause = f"{first_col} = '{escaped_val}'"
-                                else:
-                                    where_clause = f"{first_col} = {first_val}"
-                                
-                                update_record(TABLE_NAME, form_data, where_clause, conn)
+                                with st.spinner("💾 Saving changes..."):
+                                    conn = get_connection(DATABRICKS_HOST, HTTP_PATH)
+                                    # Create WHERE clause using first column as identifier
+                                    first_col = list(st.session_state.table_schema.keys())[0]
+                                    first_val = selected_record[first_col]
+                                    if isinstance(first_val, str):
+                                        escaped_val = first_val.replace("'", "''")
+                                        where_clause = f"{first_col} = '{escaped_val}'"
+                                    else:
+                                        where_clause = f"{first_col} = {first_val}"
+                                    
+                                    update_record(TABLE_NAME, form_data, where_clause, conn)
+                                    # Refresh data in background
+                                    st.session_state.table_data = read_table(TABLE_NAME, conn)
                                 st.success("✅ Record updated successfully!")
-                                st.session_state.table_data = None  # Force refresh
-                                st.rerun()
                             except Exception as e:
                                 st.error(f"❌ Error updating record: {str(e)}")
             else:
@@ -687,11 +701,12 @@ with tab_form:
                             st.error(f"❌ Validation Error: {error_msg}")
                         else:
                             try:
-                                conn = get_connection(DATABRICKS_HOST, HTTP_PATH)
-                                insert_record(TABLE_NAME, form_data, conn)
+                                with st.spinner("💾 Adding record..."):
+                                    conn = get_connection(DATABRICKS_HOST, HTTP_PATH)
+                                    insert_record(TABLE_NAME, form_data, conn)
+                                    # Refresh data in background
+                                    st.session_state.table_data = read_table(TABLE_NAME, conn)
                                 st.success("✅ Record added successfully!")
-                                st.session_state.table_data = None  # Force refresh
-                                st.rerun()
                             except Exception as e:
                                 st.error(f"❌ Error adding record: {str(e)}")
         
@@ -727,20 +742,21 @@ with tab_form:
                     
                     if st.button("🗑️ Confirm Delete", type="secondary"):
                         try:
-                            conn = get_connection(DATABRICKS_HOST, HTTP_PATH)
-                            # Create WHERE clause using first column as identifier
-                            first_col = list(st.session_state.table_schema.keys())[0]
-                            first_val = selected_record[first_col]
-                            if isinstance(first_val, str):
-                                escaped_val = first_val.replace("'", "''")
-                                where_clause = f"{first_col} = '{escaped_val}'"
-                            else:
-                                where_clause = f"{first_col} = {first_val}"
-                            
-                            delete_record(TABLE_NAME, where_clause, conn)
+                            with st.spinner("🗑️ Deleting record..."):
+                                conn = get_connection(DATABRICKS_HOST, HTTP_PATH)
+                                # Create WHERE clause using first column as identifier
+                                first_col = list(st.session_state.table_schema.keys())[0]
+                                first_val = selected_record[first_col]
+                                if isinstance(first_val, str):
+                                    escaped_val = first_val.replace("'", "''")
+                                    where_clause = f"{first_col} = '{escaped_val}'"
+                                else:
+                                    where_clause = f"{first_col} = {first_val}"
+                                
+                                delete_record(TABLE_NAME, where_clause, conn)
+                                # Refresh data in background
+                                st.session_state.table_data = read_table(TABLE_NAME, conn)
                             st.success("✅ Record deleted successfully!")
-                            st.session_state.table_data = None  # Force refresh
-                            st.rerun()
                         except Exception as e:
                             st.error(f"❌ Error deleting record: {str(e)}")
             else:
@@ -750,6 +766,21 @@ with tab_form:
 
 with tab_view:
     st.subheader("📊 Table Data View")
+    
+    # Add Connect button in Table View
+    col_connect, col_refresh = st.columns([1, 4])
+    with col_connect:
+        if st.button("🔌 Connect to Table", type="primary", key="connect_table_view"):
+            try:
+                with st.spinner("Connecting to Databricks..."):
+                    conn = get_connection(DATABRICKS_HOST, HTTP_PATH)
+                    st.session_state.table_data = read_table(TABLE_NAME, conn)
+                    st.session_state.table_schema = get_table_schema(TABLE_NAME, conn)
+                    st.session_state.connection_established = True
+                st.success("✅ Successfully connected!")
+                st.rerun()
+            except Exception as e:
+                st.error(f"❌ Connection failed: {str(e)}")
     
     if st.session_state.table_data is not None:
         # Filters section - Row 1
@@ -805,7 +836,9 @@ with tab_view:
             )
         
         # Search functionality
-        search_term = st.text_input("🔍 Search records:", placeholder="Enter search term...", key="search_table_view")
+        search_term = st.text_input("🔍 Search records:", placeholder="Enter search term...", value=st.session_state.search_term, key="search_input")
+        # Update session state
+        st.session_state.search_term = search_term
         
         # Apply filters
         display_data = st.session_state.table_data.copy()
