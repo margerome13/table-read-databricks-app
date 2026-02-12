@@ -729,16 +729,51 @@ with tab_form:
                     with st.expander("📋 Current Record Details", expanded=False):
                         st.json(selected_record.to_dict())
                     
+                    # Initialize session state for edit tech_group
+                    if 'edit_tech_group' not in st.session_state or st.session_state.selected_record_index != selected_option:
+                        st.session_state.edit_tech_group = str(selected_record.get('tech_group', ''))
+                    
+                    # Render tech_group OUTSIDE the form to enable dynamic updates
+                    st.write("**Select Tech Group to filter Mesh Teams:**")
+                    tech_group_options = DROPDOWN_VALUES["tech_group"]
+                    try:
+                        default_idx = tech_group_options.index(st.session_state.edit_tech_group) if st.session_state.edit_tech_group in tech_group_options else 0
+                    except ValueError:
+                        default_idx = 0
+                    
+                    selected_tech_group = st.selectbox(
+                        "tech_group",
+                        options=tech_group_options,
+                        index=default_idx,
+                        key=f"edit_tech_group_selector_{selected_idx}"
+                    )
+                    st.session_state.edit_tech_group = selected_tech_group
+                    
+                    st.divider()
+                    
                     # Form for editing
                     with st.form("edit_record_form"):
                         st.write("**Edit Record:**")
                         form_data = {}
+                        form_data['tech_group'] = st.session_state.edit_tech_group  # Pre-populate tech_group
                         
                         # Create form fields in columns for better layout
                         cols = st.columns(2)
                         col_idx = 0
                         
                         for column, dtype in st.session_state.table_schema.items():
+                            if column == 'tech_group':
+                                # Show read-only tech_group value
+                                with cols[col_idx % 2]:
+                                    st.text_input(
+                                        f"tech_group (selected above)",
+                                        value=st.session_state.edit_tech_group,
+                                        disabled=True,
+                                        key=f"edit_tech_group_display_{selected_idx}"
+                                    )
+                                col_idx += 1
+                                continue
+                            
                             with cols[col_idx % 2]:
                                 current_value = selected_record.get(column, "")
                                 form_data[column] = render_form_field(column, dtype, current_value, "edit", form_data)
@@ -782,15 +817,45 @@ with tab_form:
             st.info("ℹ️ **Mandatory fields:** All fields except root_cause, timeline_year, timeline_month, and timeline_quarter.\n\n"
                    "**Note:** If timeline_year is filled, then either timeline_month or timeline_quarter must be provided.")
             
+            # Initialize session state for tech_group if not exists
+            if 'add_tech_group' not in st.session_state:
+                st.session_state.add_tech_group = "-- Select --"
+            
+            # Render tech_group OUTSIDE the form to enable dynamic updates
+            st.write("**Select Tech Group first to filter Mesh Teams:**")
+            tech_group_options = ["-- Select --"] + DROPDOWN_VALUES["tech_group"]
+            selected_tech_group = st.selectbox(
+                "tech_group",
+                options=tech_group_options,
+                index=tech_group_options.index(st.session_state.add_tech_group) if st.session_state.add_tech_group in tech_group_options else 0,
+                key="add_tech_group_selector"
+            )
+            st.session_state.add_tech_group = selected_tech_group
+            
+            st.divider()
+            
             with st.form("add_record_form"):
                 form_data = {}
+                form_data['tech_group'] = st.session_state.add_tech_group  # Pre-populate tech_group
                 
                 # Create form fields in columns for better layout
                 cols = st.columns(2)
                 col_idx = 0
                 
-                # First pass: render all fields and collect values
+                # Render all fields except tech_group (already selected above)
                 for column, dtype in st.session_state.table_schema.items():
+                    if column == 'tech_group':
+                        # Show read-only tech_group value
+                        with cols[col_idx % 2]:
+                            st.text_input(
+                                f"tech_group (selected above)",
+                                value=st.session_state.add_tech_group,
+                                disabled=True,
+                                key="add_tech_group_display"
+                            )
+                        col_idx += 1
+                        continue
+                    
                     with cols[col_idx % 2]:
                         form_data[column] = render_form_field(column, dtype, key_suffix="add", form_data=form_data)
                     col_idx += 1
