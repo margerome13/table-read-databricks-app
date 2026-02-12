@@ -189,6 +189,52 @@ DROPDOWN_VALUES = {
     ],
 }
 
+# Tech Group to Mesh Team mapping for dynamic dropdown
+TECH_GROUP_MESH_TEAM_MAPPING = {
+    "PE01": [
+        "Account Assets",
+        "Accounts Management",
+        "Business Manager",
+        "Cards Management",
+        "Closed Loop Payment Channels",
+        "Core Payment Platforms",
+        "Developer Experience",
+        "E-Commerce",
+        "Enterprise Products Core",
+        "InterBank Transfers",
+        "Money Movement",
+        "Online Acceptance",
+        "Open Loop Payment Channels",
+        "Partner Cash Solutions",
+        "Partner Settlements",
+        "Payment Channel Integrations",
+        "Payment Terminals",
+        "Self Top-up",
+        "SKU Management",
+        "Transaction Assets",
+    ],
+    "PE02": [
+        "Business Deposits",
+        "CBS Platform",
+        "Consumer Deposits",
+        "Crypto",
+        "Identity and Access Management",
+        "Investment (Crypto, Mutual Funds, Equities and Insurance)",
+        "Risk Tech",
+        "User Profiles",
+    ],
+    "PE03": [
+        "Base App - Mobile",
+        "Base App - Web",
+        "Business Lending",
+        "Consumer Lending",
+        "Core Platform Lending",
+        "Credit Infrastructure",
+        "Marketing Tech",
+        "Messaging Platform",
+    ],
+}
+
 # Fields that should use text_area for multi-line input
 MULTILINE_FIELDS = [
     "updates",
@@ -407,7 +453,7 @@ def delete_record(table_name: str, where_clause: str, conn):
         query = f"DELETE FROM {table_name} WHERE {where_clause}"
         cursor.execute(query)
 
-def render_form_field(column_name: str, column_type: str, current_value: Any = None, key_suffix: str = ""):
+def render_form_field(column_name: str, column_type: str, current_value: Any = None, key_suffix: str = "", form_data: Dict[str, Any] = None):
     """Render appropriate form field based on column type"""
     if current_value is None:
         current_value = ""
@@ -448,6 +494,55 @@ def render_form_field(column_name: str, column_type: str, current_value: Any = N
         if ticket_value and not re.match(r'^MDAR-\d+$', ticket_value.strip()):
             st.warning("⚠️ Ticket must follow format: MDAR-#### (e.g., MDAR-1234)")
         return ticket_value.strip()  # Always strip trailing spaces
+    
+    # Special handling for mesh_team - dynamic based on tech_group
+    if column_name == "mesh_team":
+        # Get the current tech_group value from form_data or session state
+        tech_group_value = None
+        if form_data and "tech_group" in form_data:
+            tech_group_value = form_data.get("tech_group")
+        
+        # Determine which mesh_team options to show
+        if tech_group_value in TECH_GROUP_MESH_TEAM_MAPPING:
+            options = TECH_GROUP_MESH_TEAM_MAPPING[tech_group_value]
+        else:
+            # If no tech_group selected or not in mapping, show all mesh teams
+            options = DROPDOWN_VALUES["mesh_team"]
+        
+        # For new records (key_suffix="add"), add a blank placeholder
+        if key_suffix == "add":
+            options_with_placeholder = ["-- Select --"] + options
+            # Find the index of current value
+            try:
+                if current_value and current_value != "":
+                    default_index = options_with_placeholder.index(str(current_value))
+                else:
+                    default_index = 0  # Default to placeholder
+            except (ValueError, AttributeError):
+                default_index = 0
+            
+            return st.selectbox(
+                f"{column_name} ({column_type})",
+                options=options_with_placeholder,
+                index=default_index,
+                key=field_key
+            )
+        else:
+            # For editing existing records, use original options
+            try:
+                if current_value and current_value != "":
+                    default_index = options.index(str(current_value))
+                else:
+                    default_index = 0
+            except (ValueError, AttributeError):
+                default_index = 0
+            
+            return st.selectbox(
+                f"{column_name} ({column_type})",
+                options=options,
+                index=default_index,
+                key=field_key
+            )
     
     # Check if this field should be a dropdown
     if column_name in DROPDOWN_VALUES:
@@ -646,7 +741,7 @@ with tab_form:
                         for column, dtype in st.session_state.table_schema.items():
                             with cols[col_idx % 2]:
                                 current_value = selected_record.get(column, "")
-                                form_data[column] = render_form_field(column, dtype, current_value, "edit")
+                                form_data[column] = render_form_field(column, dtype, current_value, "edit", form_data)
                             col_idx += 1
                         
                         col_save, col_cancel = st.columns(2)
@@ -694,9 +789,10 @@ with tab_form:
                 cols = st.columns(2)
                 col_idx = 0
                 
+                # First pass: render all fields and collect values
                 for column, dtype in st.session_state.table_schema.items():
                     with cols[col_idx % 2]:
-                        form_data[column] = render_form_field(column, dtype, key_suffix="add")
+                        form_data[column] = render_form_field(column, dtype, key_suffix="add", form_data=form_data)
                     col_idx += 1
                 
                 col_add, col_clear = st.columns(2)
