@@ -48,7 +48,7 @@ DROPDOWN_VALUES = {
         "DE",
         "PO - Javy",
         "IDEA",
-        "ISS",
+        "ISSE",
         "EDS",
         "CrPM",
         "PO - Nitin",
@@ -138,7 +138,6 @@ DROPDOWN_VALUES = {
         "Money Movement",
         "DE",
         "DG - MDM",
-        "ISS",
         "EDG - DQ",
         "IDEA",
         "OPIC",
@@ -158,6 +157,8 @@ DROPDOWN_VALUES = {
         "E-Commerce",
         "Account Assets",
         "Closed Loop Payment Channels",
+        "Splunk",
+        "JIRA",
     ],
     
     "timeline_year": [
