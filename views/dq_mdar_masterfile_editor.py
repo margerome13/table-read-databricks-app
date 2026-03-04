@@ -141,7 +141,7 @@ DROPDOWN_VALUES = {
         "DG - MDM",
         "EDG - DQ",
         "IDEA",
-        "OPIC",
+        "OPICS",
         "SSAP",
         "Self Top-up",
         "InterBank Transfers",
