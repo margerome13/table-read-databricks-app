@@ -56,6 +56,7 @@ DROPDOWN_VALUES = {
         "PO - Cams",
         "Ops",
         "Fraud Analytics",
+        "Enterprise Analytics",
     ],
     
     "overall_status": [
@@ -159,6 +160,7 @@ DROPDOWN_VALUES = {
         "Closed Loop Payment Channels",
         "Splunk",
         "JIRA",
+        "Enterprise Analytics",
     ],
     
     "timeline_year": [
