@@ -370,10 +370,10 @@ def validate_new_record(record_data: Dict[str, Any]) -> tuple[bool, str]:
     
     return True, ""
 
-def read_table(table_name: str, conn, limit: int = 1000) -> pd.DataFrame:
-    """Read table data with optional limit"""
+def read_table(table_name: str, conn) -> pd.DataFrame:
+    """Read all table data"""
     with conn.cursor() as cursor:
-        query = f"SELECT * FROM {table_name} LIMIT {limit}"
+        query = f"SELECT * FROM {table_name}"
         cursor.execute(query)
         return cursor.fetchall_arrow().to_pandas()
 
