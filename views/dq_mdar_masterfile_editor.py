@@ -258,6 +258,8 @@ st.write(
 DATABRICKS_HOST = "dbc-7d305f7c-9def.cloud.databricks.com"
 HTTP_PATH = "/sql/1.0/warehouses/80e5636f05f63c9b"
 TABLE_NAME = "dg_prod.sandbox.dq_mdar_inventory_masterfile"
+# Users refer to this as the MDAR issue_key; the table column is `ticket`.
+RECORD_KEY_COLUMN = "ticket"
 
 # Initialize session state
 if 'selected_record' not in st.session_state:
@@ -312,6 +314,22 @@ def get_manila_timestamp() -> str:
     manila_time = datetime.now(manila_tz)
     return manila_time.strftime('%Y-%m-%d %H:%M:%S')
 
+def normalize_ticket_value(ticket: Any) -> str:
+    """Normalize ticket/issue_key values for comparisons and SQL."""
+    if ticket is None or pd.isna(ticket):
+        return ""
+    return str(ticket).strip()
+
+
+def build_ticket_where_clause(ticket: str) -> str:
+    """Build a case-insensitive WHERE clause for the unique ticket/issue_key."""
+    normalized_ticket = normalize_ticket_value(ticket)
+    if not normalized_ticket:
+        raise ValueError("Ticket/issue_key is required to identify a record.")
+    escaped_ticket = normalized_ticket.replace("'", "''")
+    return f"UPPER(TRIM({RECORD_KEY_COLUMN})) = UPPER(TRIM('{escaped_ticket}'))"
+
+
 def validate_ticket_format(ticket: str) -> bool:
     """Validate ticket follows MDAR-#### format"""
     if not ticket or not isinstance(ticket, str):
@@ -319,19 +337,34 @@ def validate_ticket_format(ticket: str) -> bool:
     ticket = ticket.strip()
     return bool(re.match(r'^MDAR-\d+$', ticket))
 
-def check_ticket_exists(ticket: str, table_data: pd.DataFrame) -> bool:
-    """Check if ticket already exists in the table"""
-    if table_data is None or len(table_data) == 0:
+def check_ticket_exists(
+    ticket: str,
+    conn,
+    table_name: str,
+    exclude_ticket: Optional[str] = None,
+) -> bool:
+    """Check if ticket already exists in the table via SQL (not in-memory cache)."""
+    if not ticket or not isinstance(ticket, str) or not ticket.strip():
         return False
-    
-    # Check if 'ticket' column exists
-    if 'ticket' not in table_data.columns:
-        return False
-    
-    # Check if the ticket exists (case-insensitive)
-    ticket = ticket.strip().upper()
-    existing_tickets = table_data['ticket'].astype(str).str.strip().str.upper()
-    return ticket in existing_tickets.values
+
+    escaped_ticket = ticket.strip().upper().replace("'", "''")
+    with conn.cursor() as cursor:
+        if exclude_ticket and exclude_ticket.strip():
+            escaped_exclude = exclude_ticket.strip().upper().replace("'", "''")
+            query = (
+                f"SELECT 1 FROM {table_name} "
+                f"WHERE UPPER(TRIM(ticket)) = '{escaped_ticket}' "
+                f"AND UPPER(TRIM(ticket)) != '{escaped_exclude}' "
+                f"LIMIT 1"
+            )
+        else:
+            query = (
+                f"SELECT 1 FROM {table_name} "
+                f"WHERE UPPER(TRIM(ticket)) = '{escaped_ticket}' "
+                f"LIMIT 1"
+            )
+        cursor.execute(query)
+        return cursor.fetchone() is not None
 
 def validate_new_record(record_data: Dict[str, Any]) -> tuple[bool, str]:
     """
@@ -370,10 +403,15 @@ def validate_new_record(record_data: Dict[str, Any]) -> tuple[bool, str]:
     
     return True, ""
 
-def read_table(table_name: str, conn) -> pd.DataFrame:
-    """Read all table data"""
+def read_table(table_name: str, conn, limit: Optional[int] = None) -> pd.DataFrame:
+    """Read table data ordered by most recently updated (loads all rows by default)."""
     with conn.cursor() as cursor:
-        query = f"SELECT * FROM {table_name}"
+        query = (
+            f"SELECT * FROM {table_name} "
+            f"ORDER BY updated_pht DESC NULLS LAST, created_pht DESC NULLS LAST"
+        )
+        if limit is not None:
+            query += f" LIMIT {limit}"
         cursor.execute(query)
         return cursor.fetchall_arrow().to_pandas()
 
@@ -414,8 +452,15 @@ def insert_record(table_name: str, record_data: Dict[str, Any], conn):
         query = f"INSERT INTO {table_name} ({columns_str}) VALUES ({values_str})"
         cursor.execute(query)
 
-def update_record(table_name: str, record_data: Dict[str, Any], where_clause: str, conn):
-    """Update an existing record"""
+def record_exists(table_name: str, where_clause: str, conn) -> bool:
+    """Check whether a record exists before update/delete."""
+    with conn.cursor() as cursor:
+        cursor.execute(f"SELECT 1 FROM {table_name} WHERE {where_clause} LIMIT 1")
+        return cursor.fetchone() is not None
+
+
+def update_record(table_name: str, record_data: Dict[str, Any], where_clause: str, conn) -> int:
+    """Update an existing record and return the number of rows updated."""
     # Update the updated_pht timestamp to current Manila time
     record_data['updated_pht'] = get_manila_timestamp()
     
@@ -446,15 +491,40 @@ def update_record(table_name: str, record_data: Dict[str, Any], where_clause: st
     
     set_clause = ", ".join(set_clauses)
     
+    if not record_exists(table_name, where_clause, conn):
+        raise ValueError(
+            "No matching record was found for this ticket/issue_key. "
+            "Refresh data and try again."
+        )
+
     with conn.cursor() as cursor:
         query = f"UPDATE {table_name} SET {set_clause} WHERE {where_clause}"
         cursor.execute(query)
+        rows_updated = cursor.rowcount
+        if rows_updated == 0:
+            raise ValueError(
+                "No matching record was updated. The ticket/issue_key may have changed "
+                "or the record no longer exists. Refresh data and try again."
+            )
+        return rows_updated
 
-def delete_record(table_name: str, where_clause: str, conn):
-    """Delete a record"""
+def delete_record(table_name: str, where_clause: str, conn) -> int:
+    """Delete a record and return the number of rows deleted."""
+    if not record_exists(table_name, where_clause, conn):
+        raise ValueError(
+            "No matching record was found for this ticket/issue_key. "
+            "Refresh data and try again."
+        )
+
     with conn.cursor() as cursor:
         query = f"DELETE FROM {table_name} WHERE {where_clause}"
         cursor.execute(query)
+        rows_deleted = cursor.rowcount
+        if rows_deleted == 0:
+            raise ValueError(
+                "No matching record was deleted. Refresh data and try again."
+            )
+        return rows_deleted
 
 def render_form_field(column_name: str, column_type: str, current_value: Any = None, key_suffix: str = "", form_data: Dict[str, Any] = None):
     """Render appropriate form field based on column type"""
@@ -486,6 +556,16 @@ def render_form_field(column_name: str, column_type: str, current_value: Any = N
     
     # Special handling for ticket field - enforce MDAR-#### pattern
     if column_name.lower() == "ticket":
+        if key_suffix == "edit":
+            st.text_input(
+                f"{column_name} ({column_type})",
+                value=normalize_ticket_value(current_value),
+                disabled=True,
+                help="Ticket/issue_key is the unique record identifier. To rename it, use the Table View editor.",
+                key=field_key,
+            )
+            return normalize_ticket_value(current_value)
+
         ticket_value = st.text_input(
             f"{column_name} ({column_type})",
             value=str(current_value).strip() if current_value != "" and current_value is not None else "",
@@ -792,19 +872,36 @@ with tab_form:
                             try:
                                 with st.spinner("💾 Saving changes..."):
                                     conn = get_connection(DATABRICKS_HOST, HTTP_PATH)
-                                    # Create WHERE clause using first column as identifier
-                                    first_col = list(st.session_state.table_schema.keys())[0]
-                                    first_val = selected_record[first_col]
-                                    if isinstance(first_val, str):
-                                        escaped_val = first_val.replace("'", "''")
-                                        where_clause = f"{first_col} = '{escaped_val}'"
-                                    else:
-                                        where_clause = f"{first_col} = {first_val}"
-                                    
+                                    original_ticket = normalize_ticket_value(
+                                        selected_record.get(RECORD_KEY_COLUMN, "")
+                                    )
+                                    edited_ticket = normalize_ticket_value(
+                                        form_data.get(RECORD_KEY_COLUMN, "")
+                                    )
+
+                                    if not original_ticket:
+                                        raise ValueError(
+                                            "Cannot update record without a ticket/issue_key."
+                                        )
+                                    if not validate_ticket_format(edited_ticket):
+                                        raise ValueError(
+                                            f"Invalid ticket format: '{edited_ticket}'. "
+                                            "Must follow pattern MDAR-#### (e.g., MDAR-1234)"
+                                        )
+                                    if edited_ticket != original_ticket and check_ticket_exists(
+                                        edited_ticket,
+                                        conn,
+                                        TABLE_NAME,
+                                        exclude_ticket=original_ticket,
+                                    ):
+                                        raise ValueError(
+                                            f"Ticket '{edited_ticket}' already exists. "
+                                            "Use View/Edit on the existing record instead of creating a duplicate."
+                                        )
+
+                                    where_clause = build_ticket_where_clause(original_ticket)
                                     update_record(TABLE_NAME, form_data, where_clause, conn)
-                                    # Refresh data in background
                                     st.session_state.table_data = read_table(TABLE_NAME, conn)
-                                    # Set success message
                                     st.session_state.show_success_message = True
                                     st.session_state.success_message = "✅ Record updated successfully!"
                                 st.rerun()
@@ -870,26 +967,24 @@ with tab_form:
                     clear_form = st.form_submit_button("🗑️ Clear Form")
                 
                 if add_record_btn:
-                    # Check if ticket already exists
                     ticket_value = form_data.get('ticket', '').strip()
-                    if check_ticket_exists(ticket_value, st.session_state.table_data):
-                        st.error("❌ Ticket already exists. Please add a new one or go to View/Edit to update details.")
+                    is_valid, error_msg = validate_new_record(form_data)
+
+                    if not is_valid:
+                        st.error(f"❌ Validation Error: {error_msg}")
                     else:
-                        # Validate the record
-                        is_valid, error_msg = validate_new_record(form_data)
-                        
-                        if not is_valid:
-                            st.error(f"❌ Validation Error: {error_msg}")
-                        else:
-                            try:
-                                with st.spinner("💾 Adding record..."):
-                                    conn = get_connection(DATABRICKS_HOST, HTTP_PATH)
+                        try:
+                            with st.spinner("💾 Adding record..."):
+                                conn = get_connection(DATABRICKS_HOST, HTTP_PATH)
+                                if check_ticket_exists(ticket_value, conn, TABLE_NAME):
+                                    st.error("❌ Ticket already exists. Please add a new one or go to View/Edit to update details.")
+                                else:
                                     insert_record(TABLE_NAME, form_data, conn)
-                                    # Refresh data in background
                                     st.session_state.table_data = read_table(TABLE_NAME, conn)
-                                st.success("✅ Record added successfully!")
-                            except Exception as e:
-                                st.error(f"❌ Error adding record: {str(e)}")
+                                    st.success("✅ Record added successfully!")
+                                    st.rerun()
+                        except Exception as e:
+                            st.error(f"❌ Error adding record: {str(e)}")
         
         elif action == "Delete Record":
             st.subheader("🗑️ Delete Record")
@@ -925,19 +1020,18 @@ with tab_form:
                         try:
                             with st.spinner("🗑️ Deleting record..."):
                                 conn = get_connection(DATABRICKS_HOST, HTTP_PATH)
-                                # Create WHERE clause using first column as identifier
-                                first_col = list(st.session_state.table_schema.keys())[0]
-                                first_val = selected_record[first_col]
-                                if isinstance(first_val, str):
-                                    escaped_val = first_val.replace("'", "''")
-                                    where_clause = f"{first_col} = '{escaped_val}'"
-                                else:
-                                    where_clause = f"{first_col} = {first_val}"
-                                
+                                original_ticket = normalize_ticket_value(
+                                    selected_record.get(RECORD_KEY_COLUMN, "")
+                                )
+                                if not original_ticket:
+                                    raise ValueError(
+                                        "Cannot delete record without a ticket/issue_key."
+                                    )
+                                where_clause = build_ticket_where_clause(original_ticket)
                                 delete_record(TABLE_NAME, where_clause, conn)
-                                # Refresh data in background
                                 st.session_state.table_data = read_table(TABLE_NAME, conn)
                             st.success("✅ Record deleted successfully!")
+                            st.rerun()
                         except Exception as e:
                             st.error(f"❌ Error deleting record: {str(e)}")
             else:
@@ -1110,6 +1204,12 @@ with tab_view:
         # Clear filters button
         if active_filters:
             if st.button("🔄 Clear All Filters"):
+                st.session_state.filter_mesh_team = "All"
+                st.session_state.filter_dq_poc = "All"
+                st.session_state.filter_status = "All"
+                st.session_state.filter_tech_group = "All"
+                st.session_state.filter_timeline_year = "All"
+                st.session_state.search_term = ""
                 st.rerun()
         
         st.info("💡 **Inline Editing Tips:**\n"
@@ -1221,9 +1321,14 @@ with tab_view:
                         edited_row_compare = edited_row.drop(labels=['created_pht', 'updated_pht'], errors='ignore')
                         
                         if not original_row_compare.equals(edited_row_compare):
-                            # Get the ticket for WHERE clause (use original ticket)
-                            original_ticket = str(original_row['ticket']).strip()
-                            edited_ticket = str(edited_row['ticket']).strip()
+                            original_ticket = normalize_ticket_value(original_row.get(RECORD_KEY_COLUMN, ""))
+                            edited_ticket = normalize_ticket_value(edited_row.get(RECORD_KEY_COLUMN, ""))
+
+                            if not original_ticket:
+                                validation_errors.append(
+                                    f"Row {idx}: Cannot update record without a ticket/issue_key."
+                                )
+                                continue
                             
                             # Validate edited ticket format
                             if not validate_ticket_format(edited_ticket):
@@ -1232,7 +1337,12 @@ with tab_view:
                             
                             # Check if ticket was changed and if new ticket already exists
                             if original_ticket != edited_ticket:
-                                if check_ticket_exists(edited_ticket, st.session_state.table_data):
+                                if check_ticket_exists(
+                                    edited_ticket,
+                                    conn,
+                                    TABLE_NAME,
+                                    exclude_ticket=original_ticket,
+                                ):
                                     validation_errors.append(f"Row {idx}: Ticket '{edited_ticket}' already exists in the database.")
                                     continue
                             
@@ -1276,9 +1386,8 @@ with tab_view:
                                         validation_errors.append(f"Row {idx}: If 'timeline_year' is provided, either 'timeline_month' or 'timeline_quarter' must be filled.")
                                         continue
                                 
-                                # Create WHERE clause using original ticket
-                                escaped_ticket = original_ticket.replace("'", "''")
-                                where_clause = f"ticket = '{escaped_ticket}'"
+                                # Match the original ticket/issue_key, not the first table column
+                                where_clause = build_ticket_where_clause(original_ticket)
                                 
                                 # Update the record
                                 update_record(TABLE_NAME, record_data, where_clause, conn)
